@@ -1,0 +1,97 @@
+import pandas as pd, numpy as np, matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+
+table = pd.read_csv("WineDataset.csv")
+table.describe()
+
+# Разделение данных на признаки и целевую переменную
+X = table.drop('Wine', axis=1)
+y = table['Wine']
+# Перемешивание и разделение данных (80% на обучение, 20% на тестирование)
+np.random.seed(42)
+train_data = table.sample(frac=0.8, random_state=42).reset_index(drop=True)
+test_data = table.drop(train_data.index).reset_index(drop=True)
+
+
+# Рассчитываем среднее и стандартное отклонение для обучающего набора
+numerical_columns = train_data.select_dtypes(include=['float64', 'int64']).columns
+train_means = train_data[numerical_columns].mean()
+train_stds = train_data[numerical_columns].std()
+
+def standardize_column(column, mean, std):
+    return (column - mean) / std
+
+
+# Применяем нормализацию к обучающему набору
+for column in numerical_columns:
+    train_data[column] = standardize_column(train_data[column], train_means[column], train_stds[column])
+
+# Применяем нормализацию к тестовому набору с использованием параметров обучающего набора
+for column in numerical_columns:
+    test_data[column] = standardize_column(test_data[column], train_means[column], train_stds[column])
+
+
+# 3D визуализация признаков
+fig = plt.figure(figsize=(10, 7))
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(train_data['Alcohol'], train_data['Malic Acid'], train_data['Color intensity'], c=train_data['Wine'], cmap='viridis')
+ax.set_xlabel('Alcohol')
+ax.set_ylabel('Malic Acid')
+ax.set_zlabel('Color intensity')
+plt.title('3D Visualization of Wine Dataset')
+plt.show()
+# Реализация метода k-ближайших соседей
+def euclidean_distance(x1, x2):
+    return np.sqrt(np.sum((x1 - x2) ** 2))
+
+def predict(X_train, y_train, X_test, k):
+    y_pred = []
+    for test_point in X_test:
+        distances = [euclidean_distance(test_point, train_point) for train_point in X_train]
+        k_indices = np.argsort(distances)[:k]
+        k_nearest_labels = [y_train[i] for i in k_indices]
+        most_common = np.bincount(k_nearest_labels).argmax()
+        y_pred.append(most_common)
+    return np.array(y_pred)
+# Модель 1: случайный отбор признаков
+features_model_1 = np.random.choice(numerical_columns, size=3, replace=False)  # Случайно выбираем 3 признака
+X_train_1 = train_data[features_model_1].values
+X_test_1 = test_data[features_model_1].values
+
+# Модель 2: фиксированный набор признаков
+features_model_2 = ['Alcohol', 'Malic Acid', 'Color intensity']  # Выбираем заранее фиксированные признаки
+X_train_2 = train_data[features_model_2].values
+X_test_2 = test_data[features_model_2].values
+# Оценка моделей при различных значениях k
+k_values = [3, 5, 10]
+results = {}
+
+for k in k_values:
+    # Модель 1
+    y_pred_1 = predict(X_train_1, y.values[train_data.index], X_test_1, k)
+    cm_1 = confusion_matrix(y.values[test_data.index], y_pred_1)
+    report_1 = classification_report(y.values[test_data.index], y_pred_1)
+    
+    # Модель 2
+    y_pred_2 = predict(X_train_2, y.values[train_data.index], X_test_2, k)
+    cm_2 = confusion_matrix(y.values[test_data.index], y_pred_2)
+    report_2 = classification_report(y.values[test_data.index], y_pred_2)
+    
+    results[k] = {
+        'Model 1': (cm_1, report_1),
+        'Model 2': (cm_2, report_2)
+    }
+# Вывод результатов
+for k, (cm_1, report_1) in results.items():
+    print(f"Results for k={k}")
+    print("Model 1 Confusion Matrix:")
+    print(cm_1)
+    print("Model 1 Classification Report:")
+    print(report_1)
+    
+    print("Model 2 Confusion Matrix:")
+    print(results[k]['Model 2'][0])
+    print("Model 2 Classification Report:")
+    print(results[k]['Model 2'][1])
